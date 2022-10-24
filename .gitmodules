@@ -1,0 +1,12 @@
+[submodule "spark-examples"]
+	path = spark-examples
+	url = https://github.com/valohai/spark-examples
+[submodule "tensorflow-example"]
+	path = tensorflow-example
+	url = https://github.com/valohai/tensorflow-example
+[submodule "r-example"]
+	path = r-example
+	url = https://github.com/valohai/r-example
+[submodule "dl4j-nlp-cuda-example"]
+	path = dl4j-nlp-cuda-example
+	url = https://github.com/valohai/dl4j-nlp-cuda-example

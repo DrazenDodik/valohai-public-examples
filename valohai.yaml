@@ -1,0 +1,490 @@
+---
+- step:
+    name: preprocess-dataset
+    image: python:3.9
+    command:
+      - pip install numpy valohai-utils
+      - python ./tensorflow-example/preprocess_dataset.py
+    inputs:
+      - name: dataset
+        default: https://valohaidemo.blob.core.windows.net/mnist/mnist.npz
+
+- step:
+    name: train-model
+    image: tensorflow/tensorflow:2.6.0
+    command:
+      - pip install valohai-utils
+      - python ./tensorflow-example/train_model.py {parameters}
+    parameters:
+      - name: epochs
+        default: 5
+        type: integer
+      - name: learning_rate
+        default: 0.001
+        type: float
+    inputs:
+      - name: dataset
+        default: https://valohaidemo.blob.core.windows.net/mnist/preprocessed_mnist.npz
+
+- step:
+    name: batch-inference
+    image: tensorflow/tensorflow:2.6.0
+    command:
+    - pip install pillow valohai-utils
+    - python ./tensorflow-example/batch_inference.py
+    inputs:
+    - name: model
+    - name: images
+      default:
+      - https://valohaidemo.blob.core.windows.net/mnist/four-inverted.png
+      - https://valohaidemo.blob.core.windows.net/mnist/five-inverted.png
+      - https://valohaidemo.blob.core.windows.net/mnist/five-normal.jpg
+
+- step:
+    name: compare-predictions
+    image: python:3.9
+    command:
+      - pip install numpy valohai-utils
+      - python ./tensorflow-example/compare_predictions.py
+    inputs:
+      - name: predictions
+      - name: models
+        optional: true
+
+- pipeline:
+    name: Training Pipeline
+    nodes:
+      - name: preprocess
+        type: execution
+        step: preprocess-dataset
+      - name: train
+        type: execution
+        step: train-model
+        override:
+          inputs:
+            - name: dataset
+      - name: evaluate
+        type: execution
+        step: batch-inference
+    edges:
+      - [preprocess.output.preprocessed_mnist.npz, train.input.dataset]
+      - [train.output.model*, evaluate.input.model]
+
+- pipeline:
+    name: Three-Trainings Pipeline
+    nodes:
+      - name: preprocess
+        type: execution
+        step: preprocess-dataset
+      - name: train1
+        type: execution
+        step: train-model
+        override:
+          inputs:
+            - name: dataset
+      - name: train2
+        type: execution
+        step: train-model
+        override:
+          inputs:
+            - name: dataset
+      - name: train3
+        type: execution
+        step: train-model
+        override:
+          inputs:
+            - name: dataset
+      - name: evaluate1
+        type: execution
+        step: batch-inference
+      - name: evaluate2
+        type: execution
+        step: batch-inference
+      - name: evaluate3
+        type: execution
+        step: batch-inference
+      - name: find-best-model
+        type: execution
+        step: compare-predictions
+    edges:
+      - [preprocess.output.preprocessed_mnist.npz, train1.input.dataset]
+      - [preprocess.output.preprocessed_mnist.npz, train2.input.dataset]
+      - [preprocess.output.preprocessed_mnist.npz, train3.input.dataset]
+      - [train1.output.model*, evaluate1.input.model]
+      - [train2.output.model*, evaluate2.input.model]
+      - [train3.output.model*, evaluate3.input.model]
+      - [evaluate1.output.*.json, find-best-model.input.predictions]
+      - [evaluate2.output.*.json, find-best-model.input.predictions]
+      - [evaluate3.output.*.json, find-best-model.input.predictions]
+      - [evaluate1.input.model*, find-best-model.input.models]
+      - [evaluate2.input.model*, find-best-model.input.models]
+      - [evaluate3.input.model*, find-best-model.input.models]
+
+- pipeline:
+    name: Three-Trainings Pipeline with deployment
+    nodes:
+      - name: preprocess
+        type: execution
+        step: preprocess-dataset
+      - name: train1
+        type: execution
+        step: train-model
+        override:
+          inputs:
+            - name: dataset
+      - name: train2
+        type: execution
+        step: train-model
+        override:
+          inputs:
+            - name: dataset
+      - name: train3
+        type: execution
+        step: train-model
+        override:
+          inputs:
+            - name: dataset
+      - name: evaluate1
+        type: execution
+        step: batch-inference
+      - name: evaluate2
+        type: execution
+        step: batch-inference
+      - name: evaluate3
+        type: execution
+        step: batch-inference
+      - name: find-best-model
+        type: execution
+        step: compare-predictions
+      - name: deploy
+        type: deployment
+        deployment: deployment-test
+        endpoints:
+          - predict-digit
+    edges:
+      - [preprocess.output.preprocessed_mnist.npz, train1.input.dataset]
+      - [preprocess.output.preprocessed_mnist.npz, train2.input.dataset]
+      - [preprocess.output.preprocessed_mnist.npz, train3.input.dataset]
+      - [train1.output.model*, evaluate1.input.model]
+      - [train2.output.model*, evaluate2.input.model]
+      - [train3.output.model*, evaluate3.input.model]
+      - [evaluate1.output.*.json, find-best-model.input.predictions]
+      - [evaluate2.output.*.json, find-best-model.input.predictions]
+      - [evaluate3.output.*.json, find-best-model.input.predictions]
+      - [evaluate1.input.model*, find-best-model.input.models]
+      - [evaluate2.input.model*, find-best-model.input.models]
+      - [evaluate3.input.model*, find-best-model.input.models]
+      - [find-best-model.output.model*, deploy.file.predict-digit.model]
+
+- endpoint:
+    name: greet
+    image: python:3.9
+    port: 8000
+    server-command: python -m wsgiref.simple_server
+
+- endpoint:
+    name: predict-digit
+    description: predict digits from image inputs ("file" parameter)
+    image: tensorflow/tensorflow:2.6.0
+    wsgi: predict:predict
+    files:
+      - name: model
+        description: Model output file from TensorFlow
+        path: model.h5
+
+- step:
+    name: Hello world example
+    image: r-base:3.4.2
+    command: Rscript r-example/hello_world_example.R
+
+- step:
+    name: Metadata example
+    image: r-base:3.4.2
+    command: Rscript r-example/metadata_example.R {parameters}
+    parameters:
+    - name: max-epoch
+      pass-as: '{v}'
+      description: First example parameter, controls demo epoch count
+      type: integer
+      default: 30
+    - name: loss-decrement
+      pass-as: '{v}'
+      description: Second example parameter, controls demo loss decrement
+      type: float
+      default: 0.05
+
+- step:
+    name: CPU worker environment check
+    image: r-base:3.4.2
+    command:
+      - pwd
+      - ls -la
+      - R --version
+
+- step:
+    name: build-cpu-gpu-uberjar
+    image: neomatrix369/dl4j-nlp-cuda:v0.5
+    inputs:
+      - name: src-main-resources
+        default: https://github.com/neomatrix369/dl4j-nlp-cuda-example/releases/download/dl4j-nlp-src-main-resources-v0.1/dl4j-nlp-src-main-resources.tgz
+        description: NLP data for training, prediction, evaluation
+    command:
+      - ./dl4j-nlp-cuda-example/buildUberJar.sh
+    environment: aws-eu-west-1-g2-2xlarge
+
+- step:
+    name: train-cpu-linux
+    image: neomatrix369/dl4j-nlp-cuda:v0.5
+    inputs:
+      - name: cpu-linux-uberjar
+        default: datum://
+        description: dl4j nlp cpu linux uberjar
+      - name: imdb-reviews
+        default: http://ai.stanford.edu/~amaas/data/sentiment/aclImdb_v1.tar.gz
+        description: IMDB Review dataset for sentiment analysis
+      - name: google-word2vec
+        default: https://s3.amazonaws.com/dl4j-distribution/GoogleNews-vectors-negative300.bin.gz
+        description: word2vec pre-trained Google News corpus
+    command:
+      - cd dl4j-nlp-cuda-example/
+      - export BACKEND=cpu
+      - export ACTION=train
+      - time ./runUberJar.sh --action ${ACTION} --output-model-dir .
+    environment: aws-eu-west-1-g3-4xlarge
+
+- step:
+    name: train-gpu-linux
+    image: neomatrix369/dl4j-nlp-cuda:v0.5
+    inputs:
+    - name: gpu-linux-uberjar
+      default: datum://
+      description: dl4j nlp gpu linux uberjar
+    - name: imdb-reviews
+      default: http://ai.stanford.edu/~amaas/data/sentiment/aclImdb_v1.tar.gz
+      description: IMDB Review dataset for sentiment analysis
+    - name: google-word2vec
+      default: https://s3.amazonaws.com/dl4j-distribution/GoogleNews-vectors-negative300.bin.gz
+      description: word2vec pre-trained Google News corpus
+    command:
+    - cd dl4j-nlp-cuda-example
+    - export BACKEND=gpu
+    - export ACTION=train
+    - time ./runUberJar.sh --action ${ACTION} --output-model-dir .
+    environment: aws-eu-west-1-g3-4xlarge
+
+- step:
+      name: evaluate-model-linux
+      image: neomatrix369/dl4j-nlp-cuda:v0.5
+      inputs:
+      - name: linux-uberjar
+        default: datum://
+        description: dl4j nlp linux uberjar
+      - name: model
+        default: datum://
+        description: nlp model trained on Google news corpus
+      - name: imdb-reviews
+        default: http://ai.stanford.edu/~amaas/data/sentiment/aclImdb_v1.tar.gz
+        description: IMDB Review dataset for sentiment analysis
+      - name: google-word2vec
+        default: https://s3.amazonaws.com/dl4j-distribution/GoogleNews-vectors-negative300.bin.gz
+        description: word2vec pre-trained Google News corpus
+      command:
+      - cd dl4j-nlp-cuda-example
+      - export ACTION=evaluate
+      - echo "~~~ Copying jar and model into ${VH_REPOSITORY_DIR}"
+      - cp ${VH_INPUTS_DIR}/linux-uberjar/*.jar ${VH_REPOSITORY_DIR}
+      - cp ${VH_INPUTS_DIR}/model/*.pb .
+      - time ./runUberJar.sh --action ${ACTION} --input-model-file $(ls *.pb)
+      environment: aws-eu-west-1-g3-4xlarge
+
+- step:
+    name: know-your-gpus
+    image: neomatrix369/dl4j-nlp-cuda:v0.5
+    command:
+      - cd dl4j-nlp-cuda-example
+      - ./know-your-gpus.sh &> "${VH_OUTPUTS_DIR}/know-your-gpus.logs"
+      - cat "${VH_OUTPUTS_DIR}/know-your-gpus.logs"
+    environment: aws-eu-west-1-g3-4xlarge
+
+- step:
+    name: run-debug-with-minimal-configuration
+    image: valohai/nimue:0.3.1
+    environment: aws-eu-west-1-t3-large
+    description: Read the repository README for more information.
+    command: >-
+      python /nimue/main.py \
+        --release-label=emr-6.2.0 \
+        --python-versions=3.7 \
+        --cluster-applications=Hadoop,Hive,Spark \
+        --master-instance-type=m5.xlarge \
+        --slave-instance-type=m5.xlarge \
+        --instance-count=1 \
+        --tags=billingClass=ml,company:division=research \
+        --service-role=EMR_DefaultRole \
+        --instance-role=EMR_EC2_DefaultRole \
+        --app-directory=/valohai/repository \
+        --app-requirements=requirements.txt \
+        --app-main=debug.py \
+        {parameters}
+    parameters:
+      - name: payload-bucket
+        type: string
+      - name: pa-example-argument
+        type: string
+        description: >-
+          Arguments that start with `-pa-` (passed argument) are forwarded to
+          the Spark application without the `-pa-` prefix.
+        optional: true
+    environment-variables:
+      - name: AWS_DEFAULT_REGION
+        description: The region to use for the payload AWS S3 bucket and the on-demand EMR cluster.
+        optional: false
+      - name: AWS_ACCESS_KEY_ID
+        optional: false
+      - name: AWS_SECRET_ACCESS_KEY
+        optional: false
+
+
+- step:
+    name: run-debug-with-maximal-configuration
+    image: valohai/nimue:0.3.1
+    environment: aws-eu-west-1-t3-large
+    description: Read the repository README for more information.
+    command: python /nimue/main.py {parameters}
+    parameters:
+      - name: payload-bucket
+        type: string
+      - name: release-label
+        type: string
+        default: emr-6.2.0
+      - name: cluster-applications
+        type: string
+        default: Hadoop,Hive,Spark
+      - name: master-instance-type
+        type: string
+        default: m5.xlarge
+      - name: slave-instance-type
+        type: string
+        default: m5.xlarge
+      - name: instance-count
+        type: integer
+        default: 1
+      - name: service-role
+        type: string
+        default: EMR_DefaultRole
+      - name: instance-role
+        type: string
+        default: EMR_EC2_DefaultRole
+      - name: app-directory
+        type: string
+        default: /valohai/repository
+      - name: app-requirements
+        type: string
+        default: requirements.txt
+      - name: app-main
+        type: string
+        default: debug.py
+      - name: python-versions
+        type: string
+        default: 3.6,3.7
+      - name: pa-example-argument
+        type: string
+        description: >-
+          Arguments that start with `-pa-` (passed argument) are forwarded to
+          the Spark application without the `-pa-` prefix.
+    environment-variables:
+      - name: AWS_DEFAULT_REGION
+        description: The region to use for the payload AWS S3 bucket and the on-demand EMR cluster.
+        optional: false
+      - name: AWS_ACCESS_KEY_ID
+        optional: false
+      - name: AWS_SECRET_ACCESS_KEY
+        optional: false
+
+
+- step:
+    name: run-debug-with-aws-emr-configurations-json
+    image: valohai/nimue:0.3.1
+    environment: aws-eu-west-1-t3-large
+    description: Read the repository README for more information.
+    command: >-
+      python /nimue/main.py \
+        --release-label=emr-6.2.0 \
+        --python-versions=3.7 \
+        --cluster-applications=Hadoop,Hive,Spark \
+        --master-instance-type=m5.xlarge \
+        --slave-instance-type=m5.xlarge \
+        --instance-count=1 \
+        --configurations=file://valohai/inputs/configurations/configurations.json \
+        --tags=billingClass=ml,company:division=research \
+        --service-role=EMR_DefaultRole \
+        --instance-role=EMR_EC2_DefaultRole \
+        --app-directory=/valohai/repository \
+        --app-requirements=requirements.txt \
+        --app-main=debug.py \
+        {parameters}
+    parameters:
+      - name: payload-bucket
+        type: string
+      - name: pa-example-argument
+        type: string
+        description: >-
+          Arguments that start with `-pa-` (passed argument) are forwarded to
+          the Spark application without the `-pa-` prefix.
+    inputs:
+      - name: configurations
+        filename: configurations.json
+        description: AWS EMR Configurations JSON file for the cluster.
+    environment-variables:
+      - name: AWS_DEFAULT_REGION
+        description: The region to use for the payload AWS S3 bucket and the on-demand EMR cluster.
+        optional: false
+      - name: AWS_ACCESS_KEY_ID
+        optional: false
+      - name: AWS_SECRET_ACCESS_KEY
+        optional: false
+
+
+- step:
+    name: run-pi
+    image: valohai/nimue:0.3.1
+    environment: aws-eu-west-1-t3-large
+    description: Read the repository README for more information.
+    command: >-
+      python /nimue/main.py \
+        --release-label=emr-6.2.0 \
+        --python-versions=3.7 \
+        --cluster-applications=Hadoop,Hive,Spark \
+        --master-instance-type=m5.xlarge \
+        --slave-instance-type=m5.xlarge \
+        --instance-count=1 \
+        --service-role=EMR_DefaultRole \
+        --instance-role=EMR_EC2_DefaultRole \
+        --app-directory=/valohai/repository \
+        --app-requirements=requirements.txt \
+        --app-main=pi.py \
+        {parameters}
+    parameters:
+      - name: payload-bucket
+        type: string
+      - name: pa-parallelism
+        type: integer
+        default: 2
+      - name: pa-output
+        type: string
+        description: Where to `DataFrame.write` the output e.g. AWS S3 like s3://my-bucket/path/to/pi-results
+    environment-variables:
+      - name: AWS_DEFAULT_REGION
+        description: The region to use for the payload AWS S3 bucket and the on-demand EMR cluster.
+        optional: false
+      - name: AWS_ACCESS_KEY_ID
+        optional: false
+      - name: AWS_SECRET_ACCESS_KEY
+        optional: false
+
+- step:
+    name: debug
+    image: python:3.9
+    command:
+      - pip install numpy debugpy
+      - python debug.py
