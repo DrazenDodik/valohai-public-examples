@@ -421,7 +421,7 @@
         --instance-role=EMR_EC2_DefaultRole \
         --app-directory=/valohai/repository \
         --app-requirements=requirements.txt \
-        --app-main=spark-examples/debug.py \
+        --app-main=debug.py \
         {parameters}
     parameters:
       - name: payload-bucket
@@ -435,6 +435,15 @@
       - name: configurations
         filename: configurations.json
         description: AWS EMR Configurations JSON file for the cluster.
+    environment-variables:
+      - name: AWS_DEFAULT_REGION
+        description: The region to use for the payload AWS S3 bucket and the on-demand EMR cluster.
+        optional: false
+      - name: AWS_ACCESS_KEY_ID
+        optional: false
+      - name: AWS_SECRET_ACCESS_KEY
+        optional: false
+
 
 - step:
     name: run-pi
@@ -453,7 +462,7 @@
         --instance-role=EMR_EC2_DefaultRole \
         --app-directory=/valohai/repository \
         --app-requirements=requirements.txt \
-        --app-main=spark-examples/pi.py \
+        --app-main=pi.py \
         {parameters}
     parameters:
       - name: payload-bucket
@@ -471,4 +480,4 @@
     environment: valohai-dev-24-30720-t4-2004-eu-west1
     command:
       - pip install numpy debugpy
-      - python debug.py
+      - python debug_ssh.py
