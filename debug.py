@@ -8,6 +8,8 @@ debugpy.listen(5678)
 debugpy.wait_for_client()
  
 for x in range(1,20) :
+    name = "teppo"
+    print(name)
     print(f"Doing computation {x}")
     data = np.random.random((50,50))
     sum = np.sum(data)

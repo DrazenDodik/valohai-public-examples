@@ -473,18 +473,11 @@
       - name: pa-output
         type: string
         description: Where to `DataFrame.write` the output e.g. AWS S3 like s3://my-bucket/path/to/pi-results
-    environment-variables:
-      - name: AWS_DEFAULT_REGION
-        description: The region to use for the payload AWS S3 bucket and the on-demand EMR cluster.
-        optional: false
-      - name: AWS_ACCESS_KEY_ID
-        optional: false
-      - name: AWS_SECRET_ACCESS_KEY
-        optional: false
 
 - step:
     name: debug
     image: python:3.9
+    environment: valohai-dev-24-30720-t4-2004-eu-west1
     command:
       - pip install numpy debugpy
       - python debug.py
